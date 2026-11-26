@@ -61,7 +61,7 @@
           <div class="modal-body">
             <div class="field">
               <label class="label" for="full_name">Nama Lengkap Pasien</label>
-              <input id="full_name" v-model="form.full_name" class="input" type="text" required placeholder="Nama lengkap pasien" />
+              <input id="full_name" v-model="form.full_name" class="input" type="text" required maxlength="150" pattern="[^<>]+" title="Tanpa karakter < atau >" placeholder="Nama lengkap pasien" />
             </div>
 
             <div class="form-grid">

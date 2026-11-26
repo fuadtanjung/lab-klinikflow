@@ -45,6 +45,11 @@ export async function handleCreatePatient(req: Request): Promise<Response> {
     if (!full_name || !birth_date || !gender || !phone) {
       return Response.json({ success: false, error: 'Data identitas pasien wajib diisi lengkap' }, { status: 400 });
     }
+    // Validasi nama di server: 1-150 karakter setelah trim, tanpa karakter < atau >.
+    const fullName = typeof full_name === 'string' ? full_name.trim() : '';
+    if (fullName.length < 1 || fullName.length > 150 || /[<>]/.test(fullName)) {
+      return Response.json({ success: false, error: 'Nama pasien wajib 1-150 karakter dan tidak boleh mengandung < atau >' }, { status: 400 });
+    }
 
     const mrn = `MRN-${randomBytes(12).toString('hex').toUpperCase()}`;
 
@@ -53,7 +58,7 @@ export async function handleCreatePatient(req: Request): Promise<Response> {
     const [res] = await connection.query<any>(
       `INSERT INTO patients (clinic_id, mrn, full_name, birth_date, gender, phone, address)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [user.clinic_id, mrn, full_name, birth_date, gender, phone, address || '']
+      [user.clinic_id, mrn, fullName, birth_date, gender, phone, address || '']
     );
     // T20: registrasi pasien tercatat bersama datanya (tanpa menyalin PII ke audit).
     await writeAudit({ actorId: user.id, clinicId: user.clinic_id, action: 'patient.create', entityType: 'patient',
