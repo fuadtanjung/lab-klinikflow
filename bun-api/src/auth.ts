@@ -145,7 +145,7 @@ export async function handleLogin(req: Request): Promise<Response> {
       return tooManyAttempts(reservation.retryAfter);
     }
     const [rows] = await pool.query<any[]>(
-      `SELECT u.*, c.name AS clinic_name FROM users u JOIN clinics c ON u.clinic_id = c.id WHERE u.email = ?`, [email]
+      `SELECT u.id, u.clinic_id, u.name, u.email, u.password, u.role, u.phone, c.name AS clinic_name FROM users u JOIN clinics c ON u.clinic_id = c.id WHERE u.email = ?`, [email]
     );
     if (!rows.length || !await bunPassword.verify(password, rows[0].password)) {
       if (reservation.attempt >= LOGIN_MAX_FAILURES) {

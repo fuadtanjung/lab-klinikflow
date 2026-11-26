@@ -7,7 +7,8 @@ export async function handleListVisits(req: Request): Promise<Response> {
   const user = await extractAuthUser(req);
   if (!user) return Response.json({ success: false, error: 'Akses ditolak' }, { status: 401 });
   const [rows] = await pool.query<any[]>(
-    `SELECT v.*, p.full_name as patient_name, p.mrn, c.name as clinic_name
+    `SELECT v.id, v.visit_uuid, v.doctor_name, v.visit_date, v.status, v.notes,
+            p.full_name as patient_name, p.mrn, c.name as clinic_name
      FROM visits v
      JOIN patients p ON v.patient_id = p.id
      JOIN clinics c ON v.clinic_id = c.id
@@ -51,7 +52,8 @@ export async function handleCreateVisit(req: Request): Promise<Response> {
 
 export async function handleGetVisitByUuid(uuid: string, user: UserPayload): Promise<Response> {
   const [rows] = await pool.query<any[]>(
-    `SELECT v.*, p.full_name as patient_name, p.mrn, p.phone as patient_phone, p.address as patient_address, c.name as clinic_name
+    `SELECT v.id, v.visit_uuid, v.doctor_name, v.visit_date, v.status, v.notes,
+            p.full_name as patient_name, p.mrn, c.name as clinic_name
      FROM visits v
      JOIN patients p ON v.patient_id = p.id
      JOIN clinics c ON v.clinic_id = c.id

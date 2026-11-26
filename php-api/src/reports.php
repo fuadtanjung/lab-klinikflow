@@ -8,7 +8,8 @@ $user = requireInternalUser(['admin', 'manager']);
 $filterQuery = $_GET['filter'] ?? $_GET['search'] ?? '';
 
 // Ambil ringkasan laporan tagihan dan kunjungan
-$query = "SELECT i.*, p.full_name as patient_name, p.mrn, c.name as clinic_name, v.doctor_name, v.visit_date
+$query = "SELECT i.id, i.invoice_number, i.amount, i.status, p.full_name as patient_name, p.mrn,
+                 c.name as clinic_name, v.doctor_name, v.visit_date
           FROM invoices i
           JOIN patients p ON i.patient_id = p.id
           JOIN clinics c ON i.clinic_id = c.id

@@ -6,7 +6,7 @@ export async function handleListServices(req: Request): Promise<Response> {
   const user = await extractAuthUser(req);
   if (!user) return Response.json({ success: false, error: 'Akses ditolak' }, { status: 401 });
   const [rows] = await pool.query<any[]>(
-    `SELECT s.*, c.name as clinic_name 
+    `SELECT s.id, s.code, s.name, s.category, s.fee, c.name as clinic_name
      FROM services s
      JOIN clinics c ON s.clinic_id = c.id
     WHERE s.is_active = 1 AND s.clinic_id = ?
@@ -35,7 +35,7 @@ export async function handleUpdateServiceFee(req: Request): Promise<Response> {
 
     connection = await pool.getConnection();
     await connection.beginTransaction();
-    const [prevRows] = await connection.query<any[]>('SELECT * FROM services WHERE id = ? AND clinic_id = ? FOR UPDATE', [serviceId, user.clinic_id]);
+    const [prevRows] = await connection.query<any[]>('SELECT id, name, fee FROM services WHERE id = ? AND clinic_id = ? FOR UPDATE', [serviceId, user.clinic_id]);
     if (prevRows.length === 0) {
       await connection.rollback();
       return Response.json({ success: false, error: 'Layanan tidak ditemukan' }, { status: 404 });
@@ -47,7 +47,7 @@ export async function handleUpdateServiceFee(req: Request): Promise<Response> {
     await connection.query("INSERT INTO audit_log (actor_id, clinic_id, action, entity_type, entity_id, details) VALUES (?, ?, 'service.fee.update', 'service', ?, ?)",
       [user.id, user.clinic_id, serviceId, JSON.stringify({ previous_fee: prevService.fee, updated_fee: newFee })]);
 
-    const [updatedRows] = await connection.query<any[]>('SELECT * FROM services WHERE id = ? AND clinic_id = ?', [serviceId, user.clinic_id]);
+    const [updatedRows] = await connection.query<any[]>('SELECT id, code, name, category, fee FROM services WHERE id = ? AND clinic_id = ?', [serviceId, user.clinic_id]);
     await connection.commit();
 
     return Response.json({

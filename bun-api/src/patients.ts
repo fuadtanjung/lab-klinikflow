@@ -9,7 +9,7 @@ export async function handleListPatients(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const search = url.searchParams.get('search') || '';
 
-  let query = `SELECT p.*, c.name as clinic_name 
+  let query = `SELECT p.id, p.mrn, p.full_name, p.gender, p.birth_date, p.phone, p.address, c.name as clinic_name
                FROM patients p
                JOIN clinics c ON p.clinic_id = c.id
                WHERE p.clinic_id = ?`;
