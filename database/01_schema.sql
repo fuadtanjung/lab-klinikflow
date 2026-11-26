@@ -3,6 +3,7 @@
 
 SET FOREIGN_KEY_CHECKS = 0;
 
+DROP TABLE IF EXISTS login_attempts;
 DROP TABLE IF EXISTS staff_invitations;
 DROP TABLE IF EXISTS auth_sessions;
 DROP TABLE IF EXISTS audit_log;
@@ -46,6 +47,16 @@ CREATE TABLE auth_sessions (
     expires_at DATETIME NOT NULL,
     CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_sessions_expiry (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- T02: status percobaan login per email (lockout setelah 5 kegagalan dalam 15 menit).
+CREATE TABLE login_attempts (
+    email VARCHAR(254) NOT NULL PRIMARY KEY,
+    failed_count INT NOT NULL DEFAULT 0,
+    window_start DATETIME NOT NULL,
+    locked_until DATETIME NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_login_attempts_locked (locked_until)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE patients (

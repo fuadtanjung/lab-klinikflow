@@ -76,7 +76,9 @@ Seluruh akun latihan menggunakan kata sandi seragam: `password123`.
 | `pasien3@pasien.local` | `patient` | Klinik Sehat Sentosa | Akun Pasien Agus Haryanto |
 | `pasien4@pasien.local` | `patient` | Klinik Sehat Sentosa | Akun Pasien Nurul Hidayah |
 
-> *Catatan: Halaman login menyediakan tombol pemilih akun instan untuk kemudahan pengujian.*
+> *Catatan: Tombol pemilih akun instan dan petunjuk sandi bawaan hanya tampil pada build lab, yaitu bila `VITE_LAB_MODE=true` di `.env` (default `false`). Ubah nilai lalu jalankan ulang `docker compose up -d --build web`.*
+
+**Pembatasan login:** Nginx membatasi `POST /api/auth/login` sekitar 5 request/menit per IP (burst 5) dan menjawab `429`. Gateway juga mengunci email selama 15 menit setelah 5 kegagalan dalam 15 menit (tabel `login_attempts`); login berhasil mengatur ulang hitungan. Untuk membuka kunci saat latihan, jalankan `DELETE FROM login_attempts;` sebagai root MySQL atau tunggu 15 menit.
 
 ---
 

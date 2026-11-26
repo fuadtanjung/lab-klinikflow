@@ -72,6 +72,8 @@ services:
     build:
       context: ./web
       dockerfile: Dockerfile
+      args:
+        VITE_LAB_MODE: ${VITE_LAB_MODE:-false}
     container_name: klinikflow-web
     restart: unless-stopped
     ports:
