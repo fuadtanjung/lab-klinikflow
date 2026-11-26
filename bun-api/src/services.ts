@@ -32,6 +32,9 @@ export async function handleUpdateServiceFee(req: Request): Promise<Response> {
     if (!Number.isSafeInteger(serviceId) || serviceId <= 0 || !/^\d{1,10}(\.\d{1,2})?$/.test(feeText)) {
       return Response.json({ success: false, error: 'ID layanan dan tarif biaya baru tidak valid' }, { status: 400 });
     }
+    if (!(newFee > 0)) {
+      return Response.json({ success: false, error: 'Tarif layanan harus lebih besar dari 0' }, { status: 400 });
+    }
 
     connection = await pool.getConnection();
     await connection.beginTransaction();
