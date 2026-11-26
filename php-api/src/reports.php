@@ -41,7 +41,8 @@ $summaryMessage = !empty($filterQuery)
 sendJson([
     'success' => true,
     'filter' => $filterQuery,
-    'summary_html' => $summaryMessage,
+    // Ringkasan dikirim sebagai teks biasa; klien wajib merendernya sebagai teks.
+    'summary' => $summaryMessage,
     'total_records' => $total,
     'data' => $records,
     'pagination' => paginationMeta($pagination, $total)

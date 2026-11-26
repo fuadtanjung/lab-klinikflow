@@ -21,7 +21,7 @@
         </div>
       </div>
 
-      <div v-if="summaryHtml" class="summary-banner">{{ summaryHtml }}</div>
+      <div v-if="summary" class="summary-banner">{{ summary }}</div>
 
       <div class="card">
         <div v-if="loading" class="state">Memuat laporan transaksi...</div>
@@ -108,7 +108,7 @@ import type { PaginationMeta } from '../pagination';
 const route = useRoute();
 const reports = ref<any[]>([]);
 const searchFilter = ref((route.query.filter as string) || '');
-const summaryHtml = ref('');
+const summary = ref('');
 const loading = ref(true);
 const page = ref(1);
 const pagination = ref<PaginationMeta | null>(null);
@@ -129,7 +129,7 @@ async function fetchReports(targetPage = page.value) {
       reports.value = res.data;
       pagination.value = res.pagination ?? null;
       page.value = targetPage;
-      summaryHtml.value = res.summary_html;
+      summary.value = typeof res.summary === 'string' ? res.summary : '';
     }
   } catch (err) {
     console.error(err);
