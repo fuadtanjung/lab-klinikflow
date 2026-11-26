@@ -38,7 +38,14 @@ Aplikasi dirancang sebagai monorepo multi-service:
    cd KlinikFlow
    ```
 
-2. Salin `.env.example` menjadi `.env`, lalu isi `JWT_SECRET` dan `INTERNAL_AUTH_SECRET` dengan **dua nilai acak yang berbeda**, masing-masing minimal 32 byte. Gunakan `openssl rand -hex 32` untuk menghasilkan setiap nilai. Jangan masukkan `.env` ke repository.
+2. Salin `.env.example` menjadi `.env`, lalu isi `JWT_SECRET` dan `INTERNAL_AUTH_SECRET` dengan **dua nilai acak yang berbeda**, masing-masing minimal 32 byte. Gunakan `openssl rand -hex 32` untuk menghasilkan setiap nilai. Isi juga kredensial MySQL: `MYSQL_ROOT_PASSWORD`, `BUN_DB_USER`/`BUN_DB_PASSWORD`, dan `PHP_DB_USER`/`PHP_DB_PASSWORD` (nilai acak berbeda, mis. `openssl rand -hex 24`; password akun aplikasi hanya boleh berisi `[A-Za-z0-9_.~+/=-]`, minimal 16 karakter). Compose menolak berjalan bila salah satu variabel wajib kosong. Jangan masukkan `.env` ke repository.
+
+   ```bash
+   cp .env.example .env
+   for v in JWT_SECRET INTERNAL_AUTH_SECRET; do sed -i.bak "s/^$v=.*/$v=$(openssl rand -hex 32)/" .env; done
+   for v in MYSQL_ROOT_PASSWORD BUN_DB_PASSWORD PHP_DB_PASSWORD; do sed -i.bak "s/^$v=.*/$v=$(openssl rand -hex 24)/" .env; done
+   rm .env.bak
+   ```
 
 3. Bangun dan jalankan seluruh container:
    ```bash
@@ -56,7 +63,19 @@ Aplikasi dirancang sebagai monorepo multi-service:
 
 `APP_ORIGIN` harus sama persis dengan origin web. Konfigurasi default memakai HTTP lokal sehingga `COOKIE_SECURE=false`; gunakan HTTPS dan `COOKIE_SECURE=true` bila lingkungan mendukungnya. Cookie sesi `HttpOnly` berlaku satu jam dan dicabut saat logout; request yang mengubah data harus mengirim cookie CSRF dan header `X-CSRF-Token` yang sesuai. Frontend menanganinya otomatis.
 
-Gateway membuat tabel sesi, audit, dan idempotensi jika belum ada; pengguna database memerlukan izin `CREATE`. Volume database lama tidak dihapus atau diperbarui otomatis. Undangan lama tidak lagi berlaku. Periksa dan rekonsiliasi status tagihan, pembayaran, serta nominal klaim lama sebelum digunakan; data seed baru hanya diterapkan pada volume baru. Akun pasien belum memiliki hubungan terverifikasi dengan rekam pasien, sehingga data klinik tidak ditampilkan kepada role pasien.
+Seluruh tabel (termasuk sesi, audit, idempotensi, dan `login_attempts`) dibuat oleh `database/01_schema.sql`; gateway tidak lagi membuat tabel saat start. Akun aplikasi dibuat oleh `database/03_app_users.sh` saat volume database pertama kali diinisialisasi, sehingga perubahan kredensial atau skema memerlukan `docker compose down -v`. Volume database lama tidak dihapus atau diperbarui otomatis. Undangan lama tidak lagi berlaku. Periksa dan rekonsiliasi status tagihan, pembayaran, serta nominal klaim lama sebelum digunakan; data seed baru hanya diterapkan pada volume baru. Akun pasien belum memiliki hubungan terverifikasi dengan rekam pasien, sehingga data klinik tidak ditampilkan kepada role pasien.
+
+---
+
+### Akun Database
+
+| Akun | Dipakai oleh | Hak (pada `klinikflow_db`) |
+|---|---|---|
+| `root` | administrasi/inisialisasi saja | penuh; password dari `MYSQL_ROOT_PASSWORD` |
+| `BUN_DB_USER` | `bun-api` | `SELECT` pada clinics, invoice_items, claims; `SELECT, INSERT` pada users, patients, visits, payments, payment_requests; `SELECT, UPDATE` pada services, invoices; `SELECT, INSERT, UPDATE` pada staff_invitations; `SELECT, INSERT, DELETE` pada auth_sessions; `SELECT, INSERT, UPDATE, DELETE` pada login_attempts; `INSERT` pada audit_log |
+| `PHP_DB_USER` | `php-api` | `SELECT` pada clinics, patients, visits, claim_attachments; `SELECT, UPDATE` pada invoices, claims; `SELECT, INSERT` pada payments; `INSERT` pada audit_log |
+
+Tidak ada akun aplikasi yang memiliki `CREATE`, `ALTER`, `DROP`, atau `GRANT`. `DELETE` hanya diberikan pada `auth_sessions` (pencabutan sesi saat logout) dan `login_attempts` (reset lockout setelah login berhasil).
 
 ---
 
@@ -108,6 +127,8 @@ Seluruh akun latihan menggunakan kata sandi seragam: `password123`.
 ## Pengujian Keamanan
 
 `tests/security.integration.mjs` mengubah data, termasuk pembayaran dan klaim. Jalankan hanya pada database uji sekali pakai yang baru dimuat dari `database/01_schema.sql` dan `database/02_seed.sql`, dengan gateway dan PHP terhubung ke database uji tersebut. Tes memerlukan Node.js 20+ dan dependensi `bun-api` terpasang.
+
+Tes memperbarui dan menambah baris `claims` langsung di database, sehingga `KLINIKFLOW_TEST_DB_USER` harus akun uji/admin (mis. `root` pada database sekali pakai), bukan akun aplikasi berhak minimum. Port MySQL tidak dipublikasikan ke host; jalankan tes dari container di jaringan `klinikflow-internal` atau sediakan database uji terpisah. Arahkan `KLINIKFLOW_TEST_BASE` ke gateway Bun (`http://bun-api:3000` atau `http://localhost:3000`): tes melakukan enam login berturut-turut, tepat di batas burst rate limit Nginx, sehingga menjalankannya lewat port 8080 berulang kali dalam satu menit dapat menghasilkan `429`.
 
 Atur `KLINIKFLOW_TEST_DISPOSABLE=1`, `KLINIKFLOW_TEST_BASE`, `KLINIKFLOW_TEST_PHP_BASE`, `KLINIKFLOW_TEST_DB_HOST`, `KLINIKFLOW_TEST_DB_PORT`, `KLINIKFLOW_TEST_DB_NAME`, `KLINIKFLOW_TEST_DB_USER`, dan `KLINIKFLOW_TEST_DB_PASSWORD` sesuai lingkungan uji, lalu jalankan:
 
