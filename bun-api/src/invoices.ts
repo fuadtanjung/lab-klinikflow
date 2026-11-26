@@ -1,11 +1,15 @@
 import pool from './db';
 import { extractAuthUser, type UserPayload } from './auth';
 import { randomUUID } from 'node:crypto';
+import { paginationMeta, parsePagination } from './pagination';
 
 // Handler Tagihan Medis & Simulasi Pembayaran
 export async function handleListInvoices(req: Request): Promise<Response> {
   const user = await extractAuthUser(req);
   if (!user) return Response.json({ success: false, error: 'Akses ditolak' }, { status: 401 });
+  const pagination = parsePagination(new URL(req.url));
+  if (pagination instanceof Response) return pagination;
+  const [countRows] = await pool.query<any[]>('SELECT COUNT(*) AS total FROM invoices WHERE clinic_id = ?', [user.clinic_id]);
   const [rows] = await pool.query<any[]>(
     `SELECT i.id, i.invoice_number, i.amount, i.status, i.issued_at,
             p.full_name as patient_name, c.name as clinic_name, v.doctor_name,
@@ -14,10 +18,10 @@ export async function handleListInvoices(req: Request): Promise<Response> {
      JOIN patients p ON i.patient_id = p.id
      JOIN clinics c ON i.clinic_id = c.id
      JOIN visits v ON i.visit_id = v.id
-    WHERE i.clinic_id = ? ORDER BY i.id DESC`, [user.clinic_id]
+    WHERE i.clinic_id = ? ORDER BY i.id DESC LIMIT ? OFFSET ?`, [user.clinic_id, pagination.limit, pagination.offset]
   );
 
-  return Response.json({ success: true, data: rows });
+  return Response.json({ success: true, data: rows, pagination: paginationMeta(pagination, Number(countRows[0].total)) });
 }
 
 export async function handleGetInvoiceDetail(invoiceId: number, user: UserPayload): Promise<Response> {

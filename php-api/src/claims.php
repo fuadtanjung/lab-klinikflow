@@ -3,6 +3,7 @@
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/helpers/response.php';
 require_once __DIR__ . '/helpers/auth.php';
+require_once __DIR__ . '/helpers/pagination.php';
 
 $action = $_GET['action'] ?? 'list';
 $user = requireInternalUser($action === 'approve' ? ['admin', 'manager'] : ['admin', 'manager', 'staff', 'cashier']);
@@ -25,6 +26,11 @@ switch ($action) {
 }
 
 function handleListClaims($pdo, $clinicId) {
+    $pagination = getPagination();
+    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM claims WHERE clinic_id = ?");
+    $countStmt->execute([$clinicId]);
+    $total = (int)$countStmt->fetchColumn();
+
     $query = "SELECT c.id, c.claim_uuid, c.claim_number, c.insurance_name, c.amount, c.status,
                      cl.name as clinic_name, p.full_name as patient_name
               FROM claims c
@@ -36,13 +42,12 @@ function handleListClaims($pdo, $clinicId) {
     $params = [$clinicId];
 
     $query .= " ORDER BY c.id DESC";
-    $stmt = $pdo->prepare($query);
-    $stmt->execute($params);
-    $claims = $stmt->fetchAll();
+    $claims = fetchPage($pdo, $query, $params, $pagination);
 
     sendJson([
         'success' => true,
-        'data' => $claims
+        'data' => $claims,
+        'pagination' => paginationMeta($pagination, $total)
     ]);
 }
 

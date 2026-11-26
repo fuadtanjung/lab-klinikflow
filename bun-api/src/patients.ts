@@ -1,6 +1,7 @@
 import pool from './db';
 import { extractAuthUser } from './auth';
 import { writeAudit } from './audit';
+import { paginationMeta, parsePagination } from './pagination';
 import { randomBytes } from 'node:crypto';
 
 // Handler Manajemen Data Pasien
@@ -9,23 +10,28 @@ export async function handleListPatients(req: Request): Promise<Response> {
   if (!user) return Response.json({ success: false, error: 'Akses ditolak' }, { status: 401 });
   const url = new URL(req.url);
   const search = url.searchParams.get('search') || '';
+  const pagination = parsePagination(url);
+  if (pagination instanceof Response) return pagination;
 
-  let query = `SELECT p.id, p.mrn, p.full_name, p.gender, p.birth_date, p.phone, p.address, c.name as clinic_name
-               FROM patients p
-               JOIN clinics c ON p.clinic_id = c.id
-               WHERE p.clinic_id = ?`;
+  let where = 'WHERE p.clinic_id = ?';
   const params: any[] = [user.clinic_id];
 
   if (search) {
-    query += ` AND (p.full_name LIKE ? OR p.mrn LIKE ? OR p.phone LIKE ?)`;
+    where += ` AND (p.full_name LIKE ? OR p.mrn LIKE ? OR p.phone LIKE ?)`;
     params.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
 
-  query += ` ORDER BY p.id ASC`;
+  const [countRows] = await pool.query<any[]>(`SELECT COUNT(*) AS total FROM patients p ${where}`, params);
+  const [rows] = await pool.query<any[]>(
+    `SELECT p.id, p.mrn, p.full_name, p.gender, p.birth_date, p.phone, p.address, c.name as clinic_name
+     FROM patients p
+     JOIN clinics c ON p.clinic_id = c.id
+     ${where}
+     ORDER BY p.id ASC LIMIT ? OFFSET ?`,
+    [...params, pagination.limit, pagination.offset]
+  );
 
-  const [rows] = await pool.query<any[]>(query, params);
-
-  return Response.json({ success: true, data: rows });
+  return Response.json({ success: true, data: rows, pagination: paginationMeta(pagination, Number(countRows[0].total)) });
 }
 
 export async function handleCreatePatient(req: Request): Promise<Response> {

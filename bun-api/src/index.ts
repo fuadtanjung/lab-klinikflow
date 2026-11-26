@@ -30,6 +30,8 @@ function allowedRoles(path: string, method: string): UserPayload['role'][] | nul
 
 const server = Bun.serve({
   port: PORT,
+  // T22: batasi ukuran body (gateway juga terekspos langsung di :3000, tidak hanya lewat nginx).
+  maxRequestBodySize: 1024 * 1024,
   async fetch(req: Request, server) {
     const url = new URL(req.url);
     const client: ClientInfo = {

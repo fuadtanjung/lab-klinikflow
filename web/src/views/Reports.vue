@@ -17,7 +17,7 @@
             type="text"
             placeholder="Ketik kata kunci pencarian transaksi..."
           />
-          <button class="btn btn-primary btn-sm" @click="fetchReports">Terapkan Filter</button>
+          <button class="btn btn-primary btn-sm" @click="fetchReports(1)">Terapkan Filter</button>
         </div>
       </div>
 
@@ -54,6 +54,7 @@
           </table>
         </div>
         <div v-else class="state">Belum ada data laporan.</div>
+        <Pager :pagination="pagination" @change="goToPage" />
       </div>
     </div>
 
@@ -101,12 +102,16 @@
 import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { apiFetch } from '../api';
+import Pager from '../components/Pager.vue';
+import type { PaginationMeta } from '../pagination';
 
 const route = useRoute();
 const reports = ref<any[]>([]);
 const searchFilter = ref((route.query.filter as string) || '');
 const summaryHtml = ref('');
 const loading = ref(true);
+const page = ref(1);
+const pagination = ref<PaginationMeta | null>(null);
 
 const showExportModal = ref(false);
 const exportType = ref('daily_financial');
@@ -114,13 +119,16 @@ const exportFormat = ref('csv');
 const exporting = ref(false);
 const exportOutput = ref('');
 
-async function fetchReports() {
+async function fetchReports(targetPage = page.value) {
   loading.value = true;
   try {
-    const q = searchFilter.value ? `?filter=${encodeURIComponent(searchFilter.value)}` : '';
-    const res = await apiFetch(`/reports${q}`);
+    const params = new URLSearchParams({ page: String(targetPage) });
+    if (searchFilter.value) params.set('filter', searchFilter.value);
+    const res = await apiFetch(`/reports?${params}`);
     if (res.success) {
       reports.value = res.data;
+      pagination.value = res.pagination ?? null;
+      page.value = targetPage;
       summaryHtml.value = res.summary_html;
     }
   } catch (err) {
@@ -153,6 +161,10 @@ async function runExport() {
   } finally {
     exporting.value = false;
   }
+}
+
+function goToPage(target: number) {
+  fetchReports(target);
 }
 
 onMounted(() => {

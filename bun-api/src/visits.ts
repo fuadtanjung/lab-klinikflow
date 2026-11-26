@@ -1,22 +1,26 @@
 import pool from './db';
 import { extractAuthUser, type UserPayload } from './auth';
 import { writeAudit } from './audit';
+import { paginationMeta, parsePagination } from './pagination';
 import { randomUUID } from 'node:crypto';
 
 // Handler Kunjungan & Pemeriksaan Pasien
 export async function handleListVisits(req: Request): Promise<Response> {
   const user = await extractAuthUser(req);
   if (!user) return Response.json({ success: false, error: 'Akses ditolak' }, { status: 401 });
+  const pagination = parsePagination(new URL(req.url));
+  if (pagination instanceof Response) return pagination;
+  const [countRows] = await pool.query<any[]>('SELECT COUNT(*) AS total FROM visits WHERE clinic_id = ?', [user.clinic_id]);
   const [rows] = await pool.query<any[]>(
     `SELECT v.id, v.visit_uuid, v.doctor_name, v.visit_date, v.status, v.notes,
             p.full_name as patient_name, p.mrn, c.name as clinic_name
      FROM visits v
      JOIN patients p ON v.patient_id = p.id
      JOIN clinics c ON v.clinic_id = c.id
-    WHERE v.clinic_id = ? ORDER BY v.id DESC`, [user.clinic_id]
+    WHERE v.clinic_id = ? ORDER BY v.id DESC LIMIT ? OFFSET ?`, [user.clinic_id, pagination.limit, pagination.offset]
   );
 
-  return Response.json({ success: true, data: rows });
+  return Response.json({ success: true, data: rows, pagination: paginationMeta(pagination, Number(countRows[0].total)) });
 }
 
 export async function handleCreateVisit(req: Request): Promise<Response> {
