@@ -135,16 +135,19 @@ CREATE TABLE payments (
     CONSTRAINT fk_payments_invoice FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- T20: actor_id/clinic_id/entity_id NULL untuk peristiwa tanpa pelaku terautentikasi
+-- (mis. login gagal); email dan IP disimpan di details.
 CREATE TABLE audit_log (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    actor_id INT NOT NULL,
-    clinic_id INT NOT NULL,
+    actor_id INT NULL,
+    clinic_id INT NULL,
     action VARCHAR(64) NOT NULL,
     entity_type VARCHAR(32) NOT NULL,
-    entity_id INT NOT NULL,
+    entity_id INT NULL,
     details JSON NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_audit_clinic (clinic_id, created_at)
+    INDEX idx_audit_clinic (clinic_id, created_at),
+    INDEX idx_audit_action (action, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE payment_requests (

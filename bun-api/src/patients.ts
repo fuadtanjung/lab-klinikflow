@@ -1,5 +1,6 @@
 import pool from './db';
 import { extractAuthUser } from './auth';
+import { writeAudit } from './audit';
 import { randomBytes } from 'node:crypto';
 
 // Handler Manajemen Data Pasien
@@ -28,6 +29,7 @@ export async function handleListPatients(req: Request): Promise<Response> {
 }
 
 export async function handleCreatePatient(req: Request): Promise<Response> {
+  let connection;
   try {
     const user = await extractAuthUser(req);
     if (!user) return Response.json({ success: false, error: 'Akses ditolak' }, { status: 401 });
@@ -40,11 +42,17 @@ export async function handleCreatePatient(req: Request): Promise<Response> {
 
     const mrn = `MRN-${randomBytes(12).toString('hex').toUpperCase()}`;
 
-    const [res] = await pool.query<any>(
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [res] = await connection.query<any>(
       `INSERT INTO patients (clinic_id, mrn, full_name, birth_date, gender, phone, address)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [user.clinic_id, mrn, full_name, birth_date, gender, phone, address || '']
     );
+    // T20: registrasi pasien tercatat bersama datanya (tanpa menyalin PII ke audit).
+    await writeAudit({ actorId: user.id, clinicId: user.clinic_id, action: 'patient.create', entityType: 'patient',
+      entityId: res.insertId, details: { mrn } }, connection);
+    await connection.commit();
 
     return Response.json({
       success: true,
@@ -53,7 +61,10 @@ export async function handleCreatePatient(req: Request): Promise<Response> {
       mrn,
     });
   } catch (err: any) {
+    if (connection) await connection.rollback();
     return Response.json({ success: false, error: 'Pendaftaran pasien gagal' }, { status: 500 });
+  } finally {
+    connection?.release();
   }
 }
 

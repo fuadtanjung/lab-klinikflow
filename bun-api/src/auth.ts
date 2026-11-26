@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import { password as bunPassword } from 'bun';
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import pool from './db';
+import { clientDetails, writeAudit, type ClientInfo } from './audit';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET || Buffer.byteLength(JWT_SECRET) < 32) {
@@ -131,7 +132,7 @@ async function reserveLoginAttempt(key: string): Promise<{ attempt: number } | {
   }
 }
 
-export async function handleLogin(req: Request): Promise<Response> {
+export async function handleLogin(req: Request, client: ClientInfo): Promise<Response> {
   try {
     const { email, password } = await req.json();
     if (typeof email !== 'string' || typeof password !== 'string' || !email || !password || email.length > 254) {
@@ -140,26 +141,46 @@ export async function handleLogin(req: Request): Promise<Response> {
     // Kunci lockout dinormalisasi: kolasi MySQL tidak membedakan huruf besar/kecil
     // dan mengabaikan spasi di akhir, jadi variasi tersebut tidak boleh memberi kuota baru.
     const attemptKey = email.trim().toLowerCase();
+    // T20: login gagal belum memiliki actor; email dan IP disimpan di details.
+    const failureDetails = (reason: string) => ({ email: attemptKey, reason, ...clientDetails(client) });
     const reservation = await reserveLoginAttempt(attemptKey);
     if ('retryAfter' in reservation) {
+      await writeAudit({ actorId: null, clinicId: null, action: 'auth.login.failed', entityType: 'user', entityId: null,
+        details: failureDetails('locked') });
       return tooManyAttempts(reservation.retryAfter);
     }
     const [rows] = await pool.query<any[]>(
       `SELECT u.id, u.clinic_id, u.name, u.email, u.password, u.role, u.phone, c.name AS clinic_name FROM users u JOIN clinics c ON u.clinic_id = c.id WHERE u.email = ?`, [email]
     );
     if (!rows.length || !await bunPassword.verify(password, rows[0].password)) {
-      if (reservation.attempt >= LOGIN_MAX_FAILURES) {
+      const locking = reservation.attempt >= LOGIN_MAX_FAILURES;
+      if (locking) {
         await pool.query(
           `UPDATE login_attempts SET locked_until = NOW() + INTERVAL ${LOGIN_LOCK_MINUTES} MINUTE WHERE email = ?`, [attemptKey]
         );
       }
+      await writeAudit({ actorId: null, clinicId: rows[0]?.clinic_id ?? null, action: 'auth.login.failed', entityType: 'user',
+        entityId: rows[0]?.id ?? null,
+        details: { ...failureDetails('invalid_credentials'), attempt: reservation.attempt, locked: locking } });
       return Response.json({ success: false, error: 'Kredensial login klinik tidak valid' }, { status: 401 });
     }
     await pool.query('DELETE FROM login_attempts WHERE email = ?', [attemptKey]);
     const user = rows[0];
     const sessionId = randomUUID();
     const csrf = randomBytes(32).toString('hex');
-    await pool.query('INSERT INTO auth_sessions (id, user_id, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 1 HOUR))', [sessionId, user.id]);
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      await connection.query('INSERT INTO auth_sessions (id, user_id, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 1 HOUR))', [sessionId, user.id]);
+      await writeAudit({ actorId: user.id, clinicId: user.clinic_id, action: 'auth.login.success', entityType: 'user', entityId: user.id,
+        details: clientDetails(client) }, connection);
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
     const token = jwt.sign({ sid: sessionId, csrf }, secret, {
       algorithm: 'HS256', expiresIn: '1h', issuer: 'klinikflow', audience: 'klinikflow-web',
     });
@@ -167,7 +188,8 @@ export async function handleLogin(req: Request): Promise<Response> {
       id: user.id, clinic_id: user.clinic_id, name: user.name, email: user.email,
       role: user.role, phone: user.phone, clinic_name: user.clinic_name,
     } }, { headers: sessionCookies(token, csrf, 3600) });
-  } catch {
+  } catch (error) {
+    console.error('Login gagal diproses', error);
     return Response.json({ success: false, error: 'Login tidak dapat diproses' }, { status: 500 });
   }
 }
@@ -179,7 +201,19 @@ export async function handleGetMe(req: Request): Promise<Response> {
   return Response.json({ success: true, user: publicUser });
 }
 
-export async function handleLogout(user: UserPayload): Promise<Response> {
-  await pool.query('DELETE FROM auth_sessions WHERE id = ?', [user.session_id]);
+export async function handleLogout(user: UserPayload, client: ClientInfo): Promise<Response> {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.query('DELETE FROM auth_sessions WHERE id = ?', [user.session_id]);
+    await writeAudit({ actorId: user.id, clinicId: user.clinic_id, action: 'auth.logout', entityType: 'user', entityId: user.id,
+      details: clientDetails(client) }, connection);
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
   return Response.json({ success: true, message: 'Logout berhasil' }, { headers: sessionCookies('', '', 0) });
 }

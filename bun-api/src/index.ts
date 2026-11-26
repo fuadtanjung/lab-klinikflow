@@ -6,6 +6,7 @@ import { handleCreateVisit, handleGetVisitByUuid, handleListVisits } from './vis
 import { handleGetInvoiceDetail, handleListInvoices, handleProcessPayment } from './invoices';
 import { proxyToPhp } from './proxy';
 import pool from './db';
+import type { ClientInfo } from './audit';
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
@@ -29,8 +30,12 @@ function allowedRoles(path: string, method: string): UserPayload['role'][] | nul
 
 const server = Bun.serve({
   port: PORT,
-  async fetch(req: Request) {
+  async fetch(req: Request, server) {
     const url = new URL(req.url);
+    const client: ClientInfo = {
+      ip: server.requestIP(req)?.address ?? null,
+      forwardedIp: req.headers.get('X-Real-IP')?.slice(0, 64) || null,
+    };
     const path = url.pathname;
     const method = req.method;
 
@@ -60,11 +65,11 @@ const server = Bun.serve({
 
       // 1. Auth routes
       if (path === '/api/auth/login' && method === 'POST') {
-        response = await handleLogin(req);
+        response = await handleLogin(req, client);
       } else if (path === '/api/auth/me' && method === 'GET') {
         response = await handleGetMe(req);
       } else if (path === '/api/auth/logout' && method === 'POST') {
-        response = await handleLogout(user!);
+        response = await handleLogout(user!, client);
       }
 
       // 2. Services catalog & fee adjustment

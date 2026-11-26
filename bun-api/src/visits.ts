@@ -1,5 +1,6 @@
 import pool from './db';
 import { extractAuthUser, type UserPayload } from './auth';
+import { writeAudit } from './audit';
 import { randomUUID } from 'node:crypto';
 
 // Handler Kunjungan & Pemeriksaan Pasien
@@ -19,6 +20,7 @@ export async function handleListVisits(req: Request): Promise<Response> {
 }
 
 export async function handleCreateVisit(req: Request): Promise<Response> {
+  let connection;
   try {
     const user = await extractAuthUser(req);
     if (!user) return Response.json({ success: false, error: 'Akses ditolak' }, { status: 401 });
@@ -33,11 +35,17 @@ export async function handleCreateVisit(req: Request): Promise<Response> {
     if (!patients.length) return Response.json({ success: false, error: 'Pasien tidak ditemukan' }, { status: 404 });
     const visitUuid = randomUUID();
 
-    const [res] = await pool.query<any>(
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [res] = await connection.query<any>(
       `INSERT INTO visits (visit_uuid, clinic_id, patient_id, doctor_name, visit_date, status, notes)
        VALUES (?, ?, ?, ?, COALESCE(?, CURDATE()), 'registered', ?)`,
       [visitUuid, user.clinic_id, patient_id, doctor_name, visit_date || null, notes || '']
     );
+    // T20: pembuatan kunjungan tercatat bersama datanya (catatan klinis tidak disalin ke audit).
+    await writeAudit({ actorId: user.id, clinicId: user.clinic_id, action: 'visit.create', entityType: 'visit',
+      entityId: res.insertId, details: { visit_uuid: visitUuid, patient_id: patients[0].id } }, connection);
+    await connection.commit();
 
     return Response.json({
       success: true,
@@ -46,7 +54,10 @@ export async function handleCreateVisit(req: Request): Promise<Response> {
       visit_uuid: visitUuid,
     });
   } catch (err: any) {
+    if (connection) await connection.rollback();
     return Response.json({ success: false, error: 'Pendaftaran kunjungan gagal' }, { status: 500 });
+  } finally {
+    connection?.release();
   }
 }
 
